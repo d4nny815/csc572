@@ -1,0 +1,4 @@
+.vscode/
+build/
+__MASOSX/
+.DS_Store
