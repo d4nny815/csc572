@@ -1,7 +1,3 @@
-/*
- * CPE 471 Cal Poly Z. Wood + S. Sueda + I. Dunn (spline D. McGirr)
- */
-
 #include <iostream>
 #include <glad/glad.h>
 
@@ -42,6 +38,9 @@ public:
 
 	// shader program for textures
 	std::shared_ptr<Program> texProg;
+
+	std::shared_ptr<Program> celProg;      // cel shader
+	std::shared_ptr<Program> outlineProg;  // outline pass
 
 	// Objects
 	shared_ptr<Shape> dragon;
@@ -173,7 +172,8 @@ public:
 		// Initialize the GLSL program that we will use for local shading
 		prog = make_shared<Program>();
 		prog->setVerbose(true);
-		prog->setShaderNames(resourceDirectory + "/simple_vert.glsl", resourceDirectory + "/simple_frag.glsl");
+		prog->setShaderNames(resourceDirectory + "/simple_vert.glsl",
+							resourceDirectory + "/simple_frag.glsl");
 		prog->init();
 		prog->addUniform("P");
 		prog->addUniform("V");
@@ -191,7 +191,8 @@ public:
 		// Initialize the GLSL program that we will use for texture mapping
 		texProg = make_shared<Program>();
 		texProg->setVerbose(true);
-		texProg->setShaderNames(resourceDirectory + "/tex_vert.glsl", resourceDirectory + "/tex_frag0.glsl");
+		texProg->setShaderNames(resourceDirectory + "/tex_vert.glsl",
+								resourceDirectory + "/tex_frag0.glsl");
 		texProg->init();
 		texProg->addUniform("P");
 		texProg->addUniform("V");
@@ -203,6 +204,36 @@ public:
 		texProg->addAttribute("vertPos");
 		texProg->addAttribute("vertNor");
 		texProg->addAttribute("vertTex");
+
+		// cel shader
+		celProg = std::make_shared<Program>();
+		celProg->setVerbose(true);
+		celProg->setShaderNames(resourceDirectory + "/cel_vert.glsl",
+								resourceDirectory + "/cel_frag.glsl");
+		celProg->init();
+		celProg->addUniform("P");
+		celProg->addUniform("V");
+		celProg->addUniform("M");
+		celProg->addUniform("lightPos");
+		celProg->addUniform("MatAmb");
+		celProg->addUniform("MatDif");
+		celProg->addUniform("MatSpec");
+		celProg->addUniform("MatShine");
+		celProg->addAttribute("vertPos");
+		celProg->addAttribute("vertNor");
+
+		// outline shader
+		outlineProg = std::make_shared<Program>();
+		outlineProg->setVerbose(true);
+		outlineProg->setShaderNames(resourceDirectory + "/outline_vert.glsl",
+									resourceDirectory + "/outline_frag.glsl");
+		outlineProg->init();
+		outlineProg->addUniform("P");
+		outlineProg->addUniform("V");
+		outlineProg->addUniform("M");
+		outlineProg->addUniform("outlineScale");
+		outlineProg->addAttribute("vertPos");
+		outlineProg->addAttribute("vertNor");
 
 		// read in a load the texture
 		ground_tex = make_shared<Texture>();
@@ -433,6 +464,33 @@ public:
 		
 		texProg->unbind();
 
+		// draw dragon
+		// outlineProg->bind();
+		// glUniformMatrix4fv(outlineProg->getUniform("P"), 1, GL_FALSE, value_ptr(Projection->topMatrix()));
+		// glUniform1f(outlineProg->getUniform("outlineScale"), 0.0005f);
+		// SetView(outlineProg);
+		// Model->pushMatrix();
+		// Model->translate(vec3(0, -1, -5));
+		// Model->scale(15);
+		// setModel(outlineProg, Model);
+		// dragon->draw(outlineProg);
+		// Model->popMatrix();
+		// outlineProg->unbind();
+
+		celProg->bind();
+		glUniformMatrix4fv(celProg->getUniform("P"), 1, GL_FALSE, value_ptr(Projection->topMatrix()));
+		glUniform3f(celProg->getUniform("lightPos"), light_x, light_y, light_z);
+		glUniform1f(celProg->getUniform("MatShine"), 120.0);
+		SetView(celProg);
+		Model->pushMatrix();
+		Model->translate(vec3(0, -1, -5));
+		Model->scale(15);
+		SetMaterial(celProg, 1);
+		setModel(celProg, Model);
+		dragon->draw(celProg);
+		Model->popMatrix();
+		celProg->unbind();
+
 		// blin-phong shader
 		prog->bind();
 		glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, value_ptr(Projection->topMatrix()));
@@ -440,20 +498,11 @@ public:
 		glUniform1f(prog->getUniform("MatShine"), 27.9);
 		SetView(prog);
 		
-		// draw dragon
-		Model->pushMatrix();
-		Model->translate(vec3(0, -1, -5));
-		Model->scale(15);
-		SetMaterial(prog, 1);
-		setModel(prog, Model);
-		dragon->draw(prog);
-		Model->popMatrix();
-
 		// draw armadillo
 		Model->pushMatrix();
 		Model->rotate(PI, Y_AXIS);
-		Model->rotate(-PI/4, Y_AXIS);
-		Model->translate(vec3(0, .5, 3));
+		Model->rotate(-PI/6, Y_AXIS);
+		Model->translate(vec3(0, .5, 4));
 		Model->scale(.01);
 		SetMaterial(prog, 2);
 		setModel(prog, Model);
