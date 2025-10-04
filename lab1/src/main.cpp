@@ -41,6 +41,8 @@ public:
 
 	std::shared_ptr<Program> celProg;      // cel shader
 	std::shared_ptr<Program> outlineProg;  // outline pass
+	std::shared_ptr<Program> meshProg;     
+	std::shared_ptr<Program> normsProg;
 
 	// Objects
 	shared_ptr<Shape> dragon;
@@ -60,9 +62,6 @@ public:
 	shared_ptr<Texture> sky_tex;
 	// shared_ptr<Texture> wood;
 
-	// animation data
-	float lightTrans = 0;
-
 	//camera
 	double g_phi, g_theta;
 	vec3 view = vec3(0, 0, 1);
@@ -78,6 +77,7 @@ public:
 	float light_x = 0;
 	float light_y = 0;
 	float light_z = 0;
+	bool light_on = false;
 
 	void update_camera() {
 		// calc new viewing point
@@ -118,17 +118,13 @@ public:
 			update_camera();
 		}
 
-		// move light source
-		if (key == GLFW_KEY_Q && action == GLFW_PRESS) { 
-			lightTrans += 0.5;
-		}
-		if (key == GLFW_KEY_E && action == GLFW_PRESS) {
-			lightTrans -= 0.5;
-		}
-
 		// view geometry
 		if (key == GLFW_KEY_Z && action == GLFW_PRESS) {
 			glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
+		}
+
+		if (key == GLFW_KEY_L && action == GLFW_PRESS) {
+			light_on = !light_on;
 		}
 	}
 
@@ -235,9 +231,35 @@ public:
 		outlineProg->addAttribute("vertPos");
 		outlineProg->addAttribute("vertNor");
 
+		// mesh shader
+		meshProg = std::make_shared<Program>();
+		meshProg->setVerbose(true);
+		meshProg->setShaderNames(resourceDirectory + "/mesh_vert.glsl",
+								resourceDirectory + "/mesh_frag.glsl");
+		meshProg->init();
+		meshProg->addUniform("P");
+		meshProg->addUniform("V");
+		meshProg->addUniform("M");
+		meshProg->addAttribute("vertPos");
+		meshProg->addAttribute("vertNor");
+
+		// norms shader
+		normsProg = std::make_shared<Program>();
+		normsProg->setVerbose(true);
+		normsProg->setShaderNames(resourceDirectory + "/norms_vert.glsl",
+									resourceDirectory + "/norms_geom.glsl",
+									resourceDirectory + "/norms_frag.glsl");
+		normsProg->init();
+		normsProg->addUniform("P");
+		normsProg->addUniform("V");
+		normsProg->addUniform("M");
+		normsProg->addUniform("normalLength");
+		normsProg->addAttribute("vertPos");
+		normsProg->addAttribute("vertNor");
+
 		// read in a load the texture
 		ground_tex = make_shared<Texture>();
-  		ground_tex->setFilename(resourceDirectory + "/grass.jpg");
+  		ground_tex->setFilename(resourceDirectory + "/ground.jpg");
   		ground_tex->init();
   		ground_tex->setUnit(0);
   		ground_tex->setWrapModes(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
@@ -442,7 +464,6 @@ public:
 		Model->loadIdentity();
 		Model->translate(vec3(0, -1, 0));
 
-
 		// texture shader
 		texProg->bind();
 		glUniformMatrix4fv(texProg->getUniform("P"), 1, GL_FALSE, value_ptr(Projection->topMatrix()));
@@ -461,63 +482,109 @@ public:
 
 		glUniform1i(texProg->getUniform("flip"), 1);
 		drawGround(texProg);
-		
 		texProg->unbind();
 
-		// draw dragon
-		// outlineProg->bind();
-		// glUniformMatrix4fv(outlineProg->getUniform("P"), 1, GL_FALSE, value_ptr(Projection->topMatrix()));
-		// glUniform1f(outlineProg->getUniform("outlineScale"), 0.0005f);
-		// SetView(outlineProg);
-		// Model->pushMatrix();
-		// Model->translate(vec3(0, -1, -5));
-		// Model->scale(15);
-		// setModel(outlineProg, Model);
-		// dragon->draw(outlineProg);
-		// Model->popMatrix();
-		// outlineProg->unbind();
+		// * Left dragon
+		// outline
+		glEnable(GL_CULL_FACE);
+		glCullFace(GL_FRONT);
+		glDisable(GL_BLEND);
+
+		outlineProg->bind();
+		glUniformMatrix4fv(outlineProg->getUniform("P"), 1, GL_FALSE, value_ptr(Projection->topMatrix()));
+		SetView(outlineProg);
+
+		Model->pushMatrix();
+		Model->rotate(PI/4, Y_AXIS); // rotate left
+		Model->translate(vec3(0, -1.0, -5.0));
+		Model->scale(15);
+		setModel(outlineProg, Model);
+		glUniform1f(outlineProg->getUniform("outlineScale"), 0.01f);
+		dragon->draw(outlineProg);
+		Model->popMatrix();
+
+		outlineProg->unbind();
+
+		// cel pass
+		glCullFace(GL_BACK);
 
 		celProg->bind();
 		glUniformMatrix4fv(celProg->getUniform("P"), 1, GL_FALSE, value_ptr(Projection->topMatrix()));
 		glUniform3f(celProg->getUniform("lightPos"), light_x, light_y, light_z);
-		glUniform1f(celProg->getUniform("MatShine"), 120.0);
+		glUniform1f(celProg->getUniform("MatShine"), 20.0f);
 		SetView(celProg);
+
 		Model->pushMatrix();
-		Model->translate(vec3(0, -1, -5));
+		Model->rotate(PI/4, Y_AXIS);
+		Model->translate(vec3(0, -1.0, -5.0)); // same transform
 		Model->scale(15);
 		SetMaterial(celProg, 1);
 		setModel(celProg, Model);
 		dragon->draw(celProg);
 		Model->popMatrix();
+
 		celProg->unbind();
 
-		// blin-phong shader
+		glDisable(GL_CULL_FACE);
+
+		// * Middle Dragon
 		prog->bind();
 		glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, value_ptr(Projection->topMatrix()));
 		glUniform3f(prog->getUniform("lightPos"), light_x, light_y, light_z);
-		glUniform1f(prog->getUniform("MatShine"), 27.9);
+		glUniform1f(prog->getUniform("MatShine"), 20.0f);
 		SetView(prog);
-		
-		// draw armadillo
-		Model->pushMatrix();
-		Model->rotate(PI, Y_AXIS);
-		Model->rotate(-PI/6, Y_AXIS);
-		Model->translate(vec3(0, .5, 4));
-		Model->scale(.01);
-		SetMaterial(prog, 2);
-		setModel(prog, Model);
-		armadillo->draw(prog);
-		Model->popMatrix();
 
+		Model->pushMatrix();
+		Model->translate(vec3(0.0f, -1.0f, -5.0f));
+		Model->scale(15.0f);
+		SetMaterial(prog, 1);
+		setModel(prog, Model);
+		dragon->draw(prog);
 		Model->popMatrix();
 
 		prog->unbind();
 
-		lightTrans = glfwGetTime();
-		light_x = 5 * cos(lightTrans);
-		light_z = 5 * sin(lightTrans);
+		// * Right Armadillo
+		meshProg->bind();
+		glUniformMatrix4fv(meshProg->getUniform("P"), 1, GL_FALSE, value_ptr(Projection->topMatrix()));
+		SetView(meshProg);
+		
+		Model->pushMatrix();
+		Model->rotate(-PI/4, Y_AXIS);
+		Model->translate(vec3(0, 0.5, -4.0));
+		Model->rotate(-PI, Y_AXIS);
+		Model->scale(0.01f);
+		setModel(meshProg, Model);
+		armadillo->draw(meshProg);
+		Model->popMatrix();
 
+		meshProg->unbind();
+
+		normsProg->bind();
+		glUniformMatrix4fv(normsProg->getUniform("P"), 1, GL_FALSE, value_ptr(Projection->topMatrix()));
+		SetView(normsProg);
+
+		Model->pushMatrix();
+		Model->rotate(-PI/4, Y_AXIS);
+		Model->translate(vec3(0, 0.5, -4.0));
+		Model->rotate(-PI, Y_AXIS);
+		Model->scale(0.01f);
+		setModel(normsProg, Model);
+
+		glUniform1f(normsProg->getUniform("normalLength"), 3.5);
+		armadillo->draw(normsProg);
+		Model->popMatrix();
+
+		normsProg->unbind();
+
+		if (light_on) {
+			double lightTrans = glfwGetTime();
+			light_x = 3 * cos(lightTrans);
+			light_z = 3 * sin(lightTrans);
+		}
+			
 		// Pop matrix stacks.
+		Model->popMatrix();
 		Projection->popMatrix();
 	}
 };

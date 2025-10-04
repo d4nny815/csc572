@@ -1,4 +1,5 @@
 .vscode/
 build/
-__MASOSX/
+__MACOSX/
 .DS_Store
+572_*/
